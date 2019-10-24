@@ -1,0 +1,70 @@
+# ASP.NET Core
+# Build and test ASP.NET Core projects targeting .NET Core.
+# Add steps that run tests, create a NuGet package, deploy, and more:
+# https://docs.microsoft.com/azure/devops/pipelines/languages/dotnet-core
+
+name: 1.0.0$(Rev:.r)
+
+trigger:
+- master
+
+pool:
+  vmImage: 'windows-latest'
+
+stages: 
+- stage: Build
+  displayName: Build and Test
+  jobs:
+    - job: Build
+      variables:
+        buildConfiguration: 'Release'
+      steps:
+      - task: DotNetCoreCLI@2
+        inputs:
+          command: 'restore'
+          projects: 'PartsUnlimited.sln'
+          feedsToUse: 'select'
+      - task: DotNetCoreCLI@2
+        inputs:
+          command: 'build'
+          projects: 'src/PartsUnlimitedWebsite/*.csproj'
+
+      - task: DotNetCoreCLI@2
+        inputs:
+          command: 'build'
+          projects: 'test/PartsUnlimited.UnitTests/*.UnitTests.csproj'
+
+      - task: DotNetCoreCLI@2
+        inputs:
+          command: 'test'
+          projects: 'test/PartsUnlimited.UnitTests/*.csproj'
+          arguments: '--no-build'
+          testRunTitle: 'MyTest'
+
+      - task: MSBuild@1
+        inputs:
+          solution: 'src/PartsUnlimitedWebsite/*.csproj'
+          configuration: '$(BuildConfiguration)'
+          msbuildArguments: '/p:DeployOnBuild=true /p:WebPublishMethod=Package /p:PackageAsSingleFile=true /p:SkipInvalidConfigurations=true /p:PackageLocation=$(Build.ArtifactStagingDirectory)'
+
+      #- script: msbuild src/PartsUnlimitedWebsite/*.csproj /p:DeployOnBuild=true /p:WebPublishMethod=Package /p:PackageAsSingleFile=true /p:SkipInvalidConfigurations=true /p:PackageLocation=
+
+      - publish: $(Build.ArtifactStagingDirectory)
+        artifact: drop
+
+- stage: dev
+  displayName: Deploy to Dev
+  jobs:
+    - job: Dev
+      variables:
+        artifactName: 'drop'
+      steps:
+      - download: current
+        artifact: $(artifactName)
+      - task: AzureRmWebAppDeployment@4
+        inputs:
+          ConnectionType: 'AzureRM'
+          azureSubscription: 'Visual Studio Enterprise – MPN(93ddb8b3-ddb9-4d1c-ba59-421456e65538)'
+          appType: 'webApp'
+          WebAppName: 'PartsUnlimited-Josh'
+          packageForLinux: '$(Pipeline.Workspace)/$(artifactName)/PartsUnlimitedWebsite.zip'
